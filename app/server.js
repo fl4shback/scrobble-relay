@@ -269,8 +269,8 @@ app.post('/api/send/movie/:id', async (req, res) => {
     if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY missing' });
     const details = await tmdbDetails('movie', req.params.id);
     const payload = await buildMoviePayload(details);
-    const results = [];
     const results = await Promise.all(WEBHOOKS.map(url => postWebhook(url, payload)));
+    // const results = [];
     // for (const url of WEBHOOKS) {
     //   try {
     //     const form = new FormData();
