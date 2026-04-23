@@ -11,6 +11,7 @@ app.use(express.static(__dirname));
 
 const PORT = process.env.PORT || 3000;
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
+const TVDB_API_KEY = process.env.TVDB_API_KEY || '';
 const WEBHOOKS = (process.env.WEBHOOKS || '').split(',').map(s => s.trim()).filter(Boolean);
 
 const account = {
@@ -31,9 +32,39 @@ const playerInfo = {
   uuid: process.env.PLEX_PLAYER_UUID || 'mobile-relay'
 };
 
+// --- TVDB ---
+
+let tvdbToken = null;
+
+async function tvdbLogin() {
+  const r = await fetch('https://api4.thetvdb.com/v4/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apikey: TVDB_API_KEY })
+  });
+  const data = await r.json();
+  tvdbToken = data.data?.token;
+  if (!tvdbToken) throw new Error('TVDB login failed');
+}
+
+async function fetchTvdbId(remoteId) {
+  if (!TVDB_API_KEY) return null;
+  if (!tvdbToken) await tvdbLogin();
+  const url = new URL('https://api4.thetvdb.com/v4/search');
+  url.searchParams.set('remoteId', remoteId);
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${tvdbToken}` } });
+  if (!r.ok) return null;
+  const data = await r.json();
+  return data.data?.[0]?.tvdb_id ?? null;
+}
+
+// --- Health ---
+
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, tmdb: Boolean(TMDB_API_KEY), webhooks: WEBHOOKS.length });
+  res.json({ ok: true, tmdb: Boolean(TMDB_API_KEY), tvdb: Boolean(TVDB_API_KEY), webhooks: WEBHOOKS.length });
 });
+
+// --- TMDB ---
 
 app.get('/api/search', async (req, res) => {
   try {
@@ -75,19 +106,28 @@ async function tmdbDetails(type, id) {
   return r.json();
 }
 
-function guidArrayForMovie(details) {
+// --- Movie payload ---
+
+async function guidArrayForMovie(details) {
   const out = [];
   if (details.external_ids?.imdb_id) out.push({ id: `imdb://${details.external_ids.imdb_id}` });
   if (details.id) out.push({ id: `tmdb://${details.id}` });
   if (details.external_ids?.tvdb_id) {
     out.push({ id: `tvdb://${details.external_ids.tvdb_id}` });
-  } else if (details.external_ids?.imdb_id) {
-    out.push({ id: `tvdb://${details.id}` });
+  } else {
+    const remoteId = details.external_ids?.imdb_id || `tmdb-${details.id}`;
+    try {
+      const tvdbId = await fetchTvdbId(remoteId);
+      if (tvdbId) out.push({ id: `tvdb://${tvdbId}` });
+      else console.warn(`No TVDB id found for remoteId ${remoteId}`);
+    } catch (e) {
+      console.warn(`TVDB lookup failed for remoteId ${remoteId}: ${e.message}`);
+    }
   }
   return out;
 }
 
-function buildMoviePayload(details) {
+async function buildMoviePayload(details) {
   const title = details.title || details.original_title;
   const originalTitle = details.original_title || details.title;
   const year = Number((details.release_date || '').slice(0, 4)) || null;
@@ -124,7 +164,7 @@ function buildMoviePayload(details) {
       originallyAvailableAt: details.release_date || '',
       addedAt: Math.floor(Date.now() / 1000),
       updatedAt: Math.floor(Date.now() / 1000),
-      Guid: guidArrayForMovie(details)
+      Guid: await guidArrayForMovie(details)
     }
   };
 }
@@ -133,7 +173,7 @@ app.get('/api/payload/movie/:id', async (req, res) => {
   try {
     if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY missing' });
     const details = await tmdbDetails('movie', req.params.id);
-    res.json(buildMoviePayload(details));
+    res.json(await buildMoviePayload(details));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -143,7 +183,7 @@ app.post('/api/send/movie/:id', async (req, res) => {
   try {
     if (!TMDB_API_KEY) return res.status(500).json({ error: 'TMDB_API_KEY missing' });
     const details = await tmdbDetails('movie', req.params.id);
-    const payload = buildMoviePayload(details);
+    const payload = await buildMoviePayload(details);
     const results = [];
     for (const url of WEBHOOKS) {
       try {
@@ -163,7 +203,7 @@ app.post('/api/send/movie/:id', async (req, res) => {
   }
 });
 
-
+// --- Episode payload ---
 
 async function tmdbEpisodeDetails(showId, seasonNumber, episodeNumber) {
   const url = new URL(`https://api.themoviedb.org/3/tv/${showId}/season/${seasonNumber}/episode/${episodeNumber}`);
@@ -230,8 +270,6 @@ function buildEpisodePayload(showDetails, episodeDetails, seasonNumber, episodeN
     }
   };
 }
-
-
 
 app.get('/api/tv/:id/seasons', async (req, res) => {
   try {
