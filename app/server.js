@@ -79,7 +79,11 @@ function guidArrayForMovie(details) {
   const out = [];
   if (details.external_ids?.imdb_id) out.push({ id: `imdb://${details.external_ids.imdb_id}` });
   if (details.id) out.push({ id: `tmdb://${details.id}` });
-  if (details.external_ids?.tvdb_id) out.push({ id: `tvdb://${details.external_ids.tvdb_id}` });
+  if (details.external_ids?.tvdb_id) {
+    out.push({ id: `tvdb://${details.external_ids.tvdb_id}` });
+  } else if (details.external_ids?.imdb_id) {
+    out.push({ id: `tvdb://${details.external_ids.imdb_id}` });
+  }
   return out;
 }
 
