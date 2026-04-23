@@ -177,7 +177,7 @@ async function postWebhook(url, payload) {
     const r = await fetch(url, {
       method: 'POST',
       body: form,
-      signal: AbortSignal.timeout(500)
+      signal: AbortSignal.timeout(1000)
     });
     return { url, ok: r.ok, status: r.status };
   } catch (e) {
@@ -270,20 +270,6 @@ app.post('/api/send/movie/:id', async (req, res) => {
     const details = await tmdbDetails('movie', req.params.id);
     const payload = await buildMoviePayload(details);
     const results = await Promise.all(WEBHOOKS.map(url => postWebhook(url, payload)));
-    // const results = [];
-    // for (const url of WEBHOOKS) {
-    //   try {
-    //     const form = new FormData();
-    //     form.append('payload', JSON.stringify(payload));
-    //     const r = await fetch(url, {
-    //       method: 'POST',
-    //       body: form
-    //     });
-    //     results.push({ url, ok: r.ok, status: r.status });
-    //   } catch (e) {
-    //     results.push({ url, ok: false, error: e.message });
-    //   }
-    // }
     res.json({ sent: results, payload });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -430,20 +416,6 @@ app.post('/api/send/episode', async (req, res) => {
     const episodeDetails = await tmdbEpisodeDetails(showId, season, episode);
     const payload = buildEpisodePayload(showDetails, episodeDetails, season, episode);
     const results = await Promise.all(WEBHOOKS.map(url => postWebhook(url, payload)));
-    // const results = [];
-    // for (const url of WEBHOOKS) {
-    //   try {
-    //     const form = new FormData();
-    //     form.append('payload', JSON.stringify(payload));
-    //     const r = await fetch(url, {
-    //       method: 'POST',
-    //       body: form
-    //     });
-    //     results.push({ url, ok: r.ok, status: r.status });
-    //   } catch (e) {
-    //     results.push({ url, ok: false, error: e.message });
-    //   }
-    // }
     res.json({ sent: results, payload });
   } catch (e) {
     res.status(500).json({ error: e.message });
