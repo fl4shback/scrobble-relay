@@ -35,27 +35,88 @@ const playerInfo = {
 // --- TVDB ---
 
 let tvdbToken = null;
+let tvdbTokenFetchedAt = 0;
 
 async function tvdbLogin() {
+  const body = { apikey: TVDB_API_KEY };
+  if (process.env.TVDB_PIN) body.pin = process.env.TVDB_PIN;
+
   const r = await fetch('https://api4.thetvdb.com/v4/login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apikey: TVDB_API_KEY })
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify(body)
   });
-  const data = await r.json();
-  tvdbToken = data.data?.token;
-  if (!tvdbToken) throw new Error('TVDB login failed');
+
+  const data = await r.json().catch(() => ({}));
+  const token = data?.data?.token;
+  if (!r.ok || !token) throw new Error(`TVDB login failed: ${r.status}`);
+
+  tvdbToken = token;
+  tvdbTokenFetchedAt = Date.now();
+}
+
+async function tvdbRefresh() {
+  const r = await fetch('https://api4.thetvdb.com/v4/refresh_token', {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${tvdbToken}`
+    }
+  });
+
+  const data = await r.json().catch(() => ({}));
+  const token = data?.data?.token || data?.token;
+  if (!r.ok || !token) throw new Error(`TVDB refresh failed: ${r.status}`);
+
+  tvdbToken = token;
+  tvdbTokenFetchedAt = Date.now();
+}
+
+async function ensureTvdbToken() {
+  if (!tvdbToken) {
+    await tvdbLogin();
+    return;
+  }
+
+  const ageHours = (Date.now() - tvdbTokenFetchedAt) / 36e5;
+  if (ageHours > 20) {
+    try {
+      await tvdbRefresh();
+    } catch {
+      tvdbToken = null;
+      await tvdbLogin();
+    }
+  }
 }
 
 async function fetchTvdbId(remoteId) {
   if (!TVDB_API_KEY) return null;
-  if (!tvdbToken) await tvdbLogin();
-  const url = new URL('https://api4.thetvdb.com/v4/search');
-  url.searchParams.set('remoteId', remoteId);
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${tvdbToken}` } });
+  if (!remoteId) return null;
+
+  await ensureTvdbToken();
+
+  const request = async () => {
+    const url = `https://api4.thetvdb.com/v4/search/remoteid/${encodeURIComponent(remoteId)}`;
+    return fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${tvdbToken}`
+      }
+    });
+  };
+
+  let r = await request();
+
+  if (r.status === 401) {
+    tvdbToken = null;
+    await tvdbLogin();
+    r = await request();
+  }
+
   if (!r.ok) return null;
-  const data = await r.json();
-  return data.data?.[0]?.tvdb_id ?? null;
+
+  const data = await r.json().catch(() => ({}));
+  return data?.data?.[0]?.tvdb_id ?? null;
 }
 
 // --- Health ---
@@ -110,20 +171,25 @@ async function tmdbDetails(type, id) {
 
 async function guidArrayForMovie(details) {
   const out = [];
-  if (details.external_ids?.imdb_id) out.push({ id: `imdb://${details.external_ids.imdb_id}` });
-  if (details.id) out.push({ id: `tmdb://${details.id}` });
-  if (details.external_ids?.tvdb_id) {
-    out.push({ id: `tvdb://${details.external_ids.tvdb_id}` });
-  } else {
-    const remoteId = details.external_ids?.imdb_id || `tmdb-${details.id}`;
+  const imdbId = details.external_ids?.imdb_id;
+  const tmdbId = details.id;
+  const tvdbId = details.external_ids?.tvdb_id;
+
+  if (imdbId) out.push({ id: `imdb://${imdbId}` });
+  if (tmdbId) out.push({ id: `tmdb://${tmdbId}` });
+
+  if (tvdbId) {
+    out.push({ id: `tvdb://${tvdbId}` });
+  } else if (imdbId) {
     try {
-      const tvdbId = await fetchTvdbId(remoteId);
-      if (tvdbId) out.push({ id: `tvdb://${tvdbId}` });
-      else console.warn(`No TVDB id found for remoteId ${remoteId}`);
+      const fetchedTvdbId = await fetchTvdbId(imdbId);
+      if (fetchedTvdbId) out.push({ id: `tvdb://${fetchedTvdbId}` });
+      else console.warn(`No TVDB id found for imdbId ${imdbId}`);
     } catch (e) {
-      console.warn(`TVDB lookup failed for remoteId ${remoteId}: ${e.message}`);
+      console.warn(`TVDB lookup failed for imdbId ${imdbId}: ${e.message}`);
     }
   }
+
   return out;
 }
 
