@@ -1,0 +1,18 @@
+services:
+  scrobble-relay:
+    build: ./app
+    container_name: scrobble-relay
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      TMDB_API_KEY: "replace_me"
+      WEBHOOKS: "http://webhook1.com/webhook,http://webhook2.com/webhook"
+      PLEX_ACCOUNT_ID: ""
+      PLEX_ACCOUNT_TITLE: ""
+      PLEX_ACCOUNT_THUMB: ""
+      PLEX_SERVER_TITLE: ""
+      PLEX_SERVER_UUID: ""
+      PLEX_PLAYER_TITLE: ""
+      PLEX_PLAYER_UUID: ""
+    restart: unless-stopped
