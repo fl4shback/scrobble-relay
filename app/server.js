@@ -116,7 +116,10 @@ async function fetchTvdbId(remoteId) {
   if (!r.ok) return null;
 
   const data = await r.json().catch(() => ({}));
-  return data?.data?.[0]?.tvdb_id ?? null;
+  const item = data?.data?.[0];
+
+  return item?.movie?.id ?? item?.series?.id ?? item?.episode?.id ?? item?.people?.id ?? item?.season?.id ?? null;
+
 }
 
 // --- Health ---
