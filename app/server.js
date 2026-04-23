@@ -82,7 +82,7 @@ function guidArrayForMovie(details) {
   if (details.external_ids?.tvdb_id) {
     out.push({ id: `tvdb://${details.external_ids.tvdb_id}` });
   } else if (details.external_ids?.imdb_id) {
-    out.push({ id: `tvdb://${details.external_ids.imdb_id}` });
+    out.push({ id: `tvdb://${details.id}` });
   }
   return out;
 }
