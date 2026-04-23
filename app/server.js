@@ -256,10 +256,11 @@ app.post('/api/send/movie/:id', async (req, res) => {
     const results = [];
     for (const url of WEBHOOKS) {
       try {
+        const form = new FormData();
+        form.append('payload', JSON.stringify(payload));
         const r = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: form
         });
         results.push({ url, ok: r.ok, status: r.status });
       } catch (e) {
@@ -414,10 +415,11 @@ app.post('/api/send/episode', async (req, res) => {
     const results = [];
     for (const url of WEBHOOKS) {
       try {
+        const form = new FormData();
+        form.append('payload', JSON.stringify(payload));
         const r = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: form
         });
         results.push({ url, ok: r.ok, status: r.status });
       } catch (e) {
