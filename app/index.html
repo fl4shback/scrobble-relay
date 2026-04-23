@@ -38,6 +38,7 @@
     .status-left{display:grid;gap:4px;min-width:0}.status-url{font-size:14px;word-break:break-all}.status-meta{font-size:12px;color:var(--muted)}
     .badge{padding:7px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
     .ok{background:var(--okbg);color:var(--ok)} .bad{background:var(--badbg);color:var(--bad)}
+    .timeout{background:#f2dfc9;color:#9a5b00}
     .placeholder{color:var(--muted)}
     @media (max-width:700px){.search{grid-template-columns:1fr 1fr}.search input:first-child{grid-column:1/-1}.search button{grid-column:1/-1}.selected{grid-template-columns:72px 1fr}.selected-poster{width:72px;height:108px}}
   </style>
@@ -233,15 +234,23 @@ function renderSelection(payload){
 }
 
 function renderStatuses(items){
-  $('#statusList').innerHTML = (items || []).map(x => `
-    <div class="status-item">
-      <div class="status-left">
-        <div class="status-url">${escapeHtml(x.url)}</div>
-        <div class="status-meta">${escapeHtml(x.status ? 'HTTP ' + x.status : (x.error || 'No details'))}</div>
+  $('#statusList').innerHTML = (items || []).map(x => {
+    const label = x.ok ? 'Sent' : (x.status === 'timeout' ? 'Timeout' : 'Failed');
+    const cls = x.ok ? 'ok' : (x.status === 'timeout' ? 'timeout' : 'bad');
+    const meta = x.ok
+      ? `HTTP ${x.status}`
+      : (x.status === 'timeout' ? 'Timed out after 500ms' : (x.error || 'No details'));
+
+    return `
+      <div class="status-item">
+        <div class="status-left">
+          <div class="status-url">${escapeHtml(x.url)}</div>
+          <div class="status-meta">${escapeHtml(meta)}</div>
+        </div>
+        <span class="badge ${cls}">${label}</span>
       </div>
-      <span class="badge ${x.ok ? 'ok' : 'bad'}">${x.ok ? 'Sent' : 'Failed'}</span>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 async function search(){
